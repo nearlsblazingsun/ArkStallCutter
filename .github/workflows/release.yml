@@ -1,0 +1,69 @@
+name: Publish release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/release.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Package and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git checkout --detach FETCH_HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import zipfile
+          from arknights_cutter import __version__
+          tag = 'v' + __version__
+          prefix = 'ArkStallCutter-' + tag
+          files = subprocess.check_output(['git', 'ls-files', '-z']).decode('utf-8').split('\0')
+          files = [name for name in files if name and not name.startswith('.')]
+          assert len(files) == 21 and len([p for p in files if p.endswith('.png')]) == 8
+          with zipfile.ZipFile(prefix + '.zip', 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as package:
+              for name in files:
+                  content = Path(name).read_bytes()
+                  if name.endswith('.cmd'):
+                      content = content.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                  entry = zipfile.ZipInfo(prefix + '/' + name, (2026, 10, 3, 0, 0, 0))
+                  entry.create_system = 3
+                  entry.external_attr = 0o100644 << 16
+                  package.writestr(entry, content, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+          with zipfile.ZipFile(prefix + '.zip') as package:
+              assert package.testzip() is None
+          print('Packaged', len(files), 'files:', prefix + '.zip')
+          PY
+          TAG="$(python3 -c 'from arknights_cutter import __version__; print("v" + __version__)')"
+          ASSET="ArkStallCutter-${TAG}.zip"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft > /dev/null 2>&1; then
+            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "false" ]; then
+              echo "Release $TAG is already published."
+              exit 0
+            fi
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
+              --title "ArkStallCutter $TAG" \
+              --notes "简中服明日方舟自动剪辑工具，提供中文 GUI。删除暂停、1X 加速 2 倍、子弹时间加速 10 倍，优化选中操作后的回正余晃。
+
+          下载 ${ASSET}，完整解压后双击 启动界面.cmd。
+
+          需预先安装 Python 3.10+ 和 FFmpeg/FFprobe；首次启动自动创建环境并安装识别依赖。"
+          fi
+          gh release upload "$TAG" "$ASSET" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
