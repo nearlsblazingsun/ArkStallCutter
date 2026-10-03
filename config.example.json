@@ -1,0 +1,14 @@
+{
+  "analysis_height": 360,
+  "pause_roi": [0.25, 0.32, 0.5, 0.26],
+  "speed_roi": [0.68, 0.0, 0.32, 0.18],
+  "panel_roi": [0.0, 0.32, 0.33, 0.15],
+  "pause_threshold": 0.6,
+  "speed_threshold": 0.8,
+  "speed_margin": 0.055,
+  "panel_threshold": 0.58,
+  "bullet_ui_threshold": 0.7,
+  "scale_min": 0.7,
+  "scale_max": 1.3,
+  "scale_step": 0.05
+}
